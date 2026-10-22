@@ -2,9 +2,9 @@
 import streamlit as st
 from decimal import Decimal, ROUND_HALF_UP
 
-st.set_page_config(page_title="Party Split", page_icon="🎉")
-st.title("🎉 Party Split")
-st.write("Scegli cosa vuoi per la festa e scopri la tua quota!")
+st.set_page_config(page_title="Halluin", page_icon="🎉")
+st.title("🎉 Halluin")
+st.write("Scegli cosa vuoi per la festa e scopri la tua quota! no rimborsi te attacchi")
 
 PRODOTTI = {
     "Disaronno": (11.90, "bottiglia"),
