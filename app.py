@@ -3,9 +3,9 @@ import os
 from decimal import Decimal, ROUND_HALF_UP
 import streamlit as st
 
-st.set_page_config(page_title="Halluin", page_icon="🎉")
+st.set_page_config(page_title="Hallui", page_icon="🎉")
 st.title("🎉 Halluin")
-st.write("Scegli cosa vuoi per la festa e scopri quanti soldi me devi da purciaro!")
+st.write("Scegli cosa vuoi per la festa e pagame purciaro!")
 
 PRODOTTI = {
     "Disaronno": (11.90, "bottiglia"),
@@ -26,7 +26,6 @@ PRODOTTI = {
 
 FILE_VOTI = "voti.json"
 
-# --- Funzioni per salvare e caricare i voti da un file condiviso ---
 def carica_voti():
     if os.path.exists(FILE_VOTI):
         with open(FILE_VOTI, "r", encoding="utf-8") as f:
@@ -40,7 +39,6 @@ def salva_voti(voti):
     with open(FILE_VOTI, "w", encoding="utf-8") as f:
         json.dump(voti, f, ensure_ascii=False, indent=2)
 
-# Carichiamo sempre i voti aggiornati dal file
 voti_condivisi = carica_voti()
 
 nome = st.text_input("Il tuo nome")
@@ -70,6 +68,20 @@ else:
             f"**{persona}**: {', '.join(scelte_persona) or 'Nessun prodotto'}"
         )
 
+    # --- NUOVA SEZIONE: Elimina un partecipante ---
+    with st.expander("⚙️ Gestisci / Rimuovi un partecipante"):
+        da_eliminare = st.selectbox(
+            "Seleziona il nome da rimuovere", 
+            ["-- Seleziona --"] + list(voti_condivisi.keys())
+        )
+        if da_eliminare != "-- Seleziona --":
+            if st.button("🗑️ Elimina questo utente"):
+                del voti_condivisi[da_eliminare]
+                salva_voti(voti_condivisi)
+                st.success(f"Utente '{da_eliminare}' rimosso con successo!")
+                st.rerun()
+    # ---------------------------------------------
+
     comuni = st.number_input(
         "Spese comuni totali (€)", min_value=0.0, value=0.0, step=1.0
     )
@@ -90,7 +102,6 @@ else:
         if not interessati:
             continue
 
-        # Regola provvisoria: una confezione/bottiglia ogni 3 votanti.
         quantita = (len(interessati) + 2) // 3
         costo = int(
             (Decimal(str(prezzo)) * quantita * 100).quantize(
@@ -119,6 +130,10 @@ else:
     for persona, centesimi in totali.items():
         st.write(f"**{persona}**: € {centesimi / 100:.2f}")
 
+    st.write(
+        f"**Totale prodotti:** € {sum(x[2] for x in dettagli.values()) / 100:.2f}"
+    )
+    st.write(f"**Spese comuni:** € {cent_comuni / 100:.2f}")
     st.write(
         f"**Totale prodotti:** € {sum(x[2] for x in dettagli.values()) / 100:.2f}"
     )
