@@ -1,6 +1,7 @@
-
-import streamlit as st
+import json
+import os
 from decimal import Decimal, ROUND_HALF_UP
+import streamlit as st
 
 st.set_page_config(page_title="Party Split", page_icon="🎉")
 st.title("🎉 Party Split")
@@ -23,61 +24,80 @@ PRODOTTI = {
     "Pop corn": (1.45, "confezione"),
 }
 
-if "voti" not in st.session_state:
-    st.session_state.voti = {}
+FILE_VOTI = "voti.json"
+
+# --- Funzioni per salvare e caricare i voti da un file condiviso ---
+def carica_voti():
+    if os.path.exists(FILE_VOTI):
+        with open(FILE_VOTI, "r", encoding="utf-8") as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return {}
+    return {}
+
+def salva_voti(voti):
+    with open(FILE_VOTI, "w", encoding="utf-8") as f:
+        json.dump(voti, f, ensure_ascii=False, indent=2)
+
+# Carichiamo sempre i voti aggiornati dal file
+voti_condivisi = carica_voti()
 
 nome = st.text_input("Il tuo nome")
 if nome.strip():
     nome = nome.strip()
-    precedenti = st.session_state.voti.get(nome, [])
+    precedenti = voti_condivisi.get(nome, [])
     scelte = st.multiselect(
-        "Cosa vuoi?",
-        list(PRODOTTI.keys()),
-        default=precedenti
+        "Cosa vuoi?", list(PRODOTTI.keys()), default=precedenti
     )
     if st.button("Salva / aggiorna il mio voto"):
-        st.session_state.voti[nome] = scelte
+        voti_condivisi[nome] = scelte
+        salva_voti(voti_condivisi)
         st.success("Voto aggiornato!")
+        st.rerun()
 
 st.divider()
 st.subheader("🗳️ Voti dei partecipanti")
 
-if not st.session_state.voti:
+if st.button("🔄 Aggiorna lista voti"):
+    st.rerun()
+
+if not voti_condivisi:
     st.info("Ancora nessun voto.")
 else:
-    for persona, scelte_persona in st.session_state.voti.items():
-        st.write(f"**{persona}**: {', '.join(scelte_persona) or 'Nessun prodotto'}")
+    for persona, scelte_persona in voti_condivisi.items():
+        st.write(
+            f"**{persona}**: {', '.join(scelte_persona) or 'Nessun prodotto'}"
+        )
 
     comuni = st.number_input(
-        "Spese comuni totali (€)",
-        min_value=0.0,
-        value=0.0,
-        step=1.0
+        "Spese comuni totali (€)", min_value=0.0, value=0.0, step=1.0
     )
 
     st.divider()
     st.subheader("🛒 Riepilogo acquisti")
 
-    totali = {persona: 0 for persona in st.session_state.voti}
+    totali = {persona: 0 for persona in voti_condivisi}
     partecipanti = list(totali)
     dettagli = {}
 
     for prodotto, (prezzo, tipo) in PRODOTTI.items():
         interessati = [
-            p for p, scelte_persona in st.session_state.voti.items()
+            p
+            for p, scelte_persona in voti_condivisi.items()
             if prodotto in scelte_persona
         ]
         if not interessati:
             continue
 
-        # Regola provvisoria: una bottiglia/confezione ogni 3 votanti.
+        # Regola provvisoria: una confezione/bottiglia ogni 3 votanti.
         quantita = (len(interessati) + 2) // 3
         costo = int(
             (Decimal(str(prezzo)) * quantita * 100).quantize(
                 Decimal("1"), rounding=ROUND_HALF_UP
             )
         )
-        dettagli[prodotto] = (len(interessati), quantita, costo)
+        dettagli[prodotto] = (len(interessati), quantita, costo, tipo)
 
         base, resto = divmod(costo, len(interessati))
         for i, persona in enumerate(interessati):
@@ -89,19 +109,17 @@ else:
         for i, persona in enumerate(partecipanti):
             totali[persona] += base + (1 if i < resto else 0)
 
-    for prodotto, (votanti, quantita, costo) in dettagli.items():
+    for prodotto, (votanti, quantita, costo, tipo) in dettagli.items():
         st.write(
             f"- **{prodotto}**: {votanti} interessati, "
-            f"{quantita} confezioni, € {costo / 100:.2f}"
+            f"{quantita} {tipo if quantita == 1 else tipo + 'e/i'}, € {costo / 100:.2f}"
         )
 
     st.subheader("💶 Quanto paga ciascuno")
     for persona, centesimi in totali.items():
         st.write(f"**{persona}**: € {centesimi / 100:.2f}")
 
-    st.write(f"**Totale prodotti:** € {sum(x[2] for x in dettagli.values()) / 100:.2f}")
+    st.write(
+        f"**Totale prodotti:** € {sum(x[2] for x in dettagli.values()) / 100:.2f}"
+    )
     st.write(f"**Spese comuni:** € {cent_comuni / 100:.2f}")
-
-
-if st.button("🔄 Aggiorna voti"):
-    st.rerun()
