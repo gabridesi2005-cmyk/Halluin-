@@ -127,4 +127,3 @@ else:
 
 if st.button("🔄 Aggiorna voti"):
     st.rerun()
-```
