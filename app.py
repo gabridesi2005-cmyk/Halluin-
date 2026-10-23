@@ -1,105 +1,130 @@
 
 import streamlit as st
 import requests
-URL_FOGLIO = "https://script.google.com/macros/s/AKfycbyobZDTiEKajFlKk0HAYUUnZns0ro01Nwvryq8WzI7zFDaf8hpagwpCEXkpZU_PL7TCYQ/exec"
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 
 st.set_page_config(page_title="Halluin", page_icon="🎉")
 st.title("🎉 Halluin")
-st.write("Scegli cosa vuoi per la festa e scopri la tua quota! no rimborsi te attacchi")
+st.write("Scegli cosa vuoi per la festa e scopri la tua quota!")
+
+URL_FOGLIO = "https://script.google.com/macros/s/AKfycbyEQKa2nEI2JZ4KTkR9-w0XrY5jqHJ162nId5kIXGS9NYwMsm_nO1-o2nUaRJazQNbb7w/exec"
 
 PRODOTTI = {
-    "Disaronno": (11.90, "bottiglia"),
-    "Jagermeister": (13.99, "bottiglia"),
-    "Amaro del Capo": (11.90, "bottiglia"),
-    "Montenegro": (14.20, "bottiglia"),
-    "Bombay": (16.50, "bottiglia"),
-    "Aperitivo Spritz": (2.90, "confezione"),
-    "Vodka": (8.99, "bottiglia"),
-    "Tonica": (2.00, "confezione"),
-    "Coca Cola": (1.79, "confezione"),
-    "Fanta": (1.89, "confezione"),
-    "Lemon": (0.79, "confezione"),
-    "Red Bull": (5.19, "confezione"),
-    "Patatine": (1.99, "confezione"),
-    "Pop corn": (1.45, "confezione"),
+    "Disaronno": 11.90,
+    "Jagermeister": 13.99,
+    "Amaro del Capo": 11.90,
+    "Montenegro": 14.20,
+    "Bombay": 16.50,
+    "Aperitivo Spritz": 2.90,
+    "Vodka": 8.99,
+    "Tonica": 2.00,
+    "Coca Cola": 1.79,
+    "Fanta": 1.89,
+    "Lemon": 0.79,
+    "Red Bull": 5.19,
+    "Patatine": 1.99,
+    "Pop corn": 1.45,
 }
 
-if "voti" not in st.session_state:
-    st.session_state.voti = {}
+def leggi_voti():
+    r = requests.get(URL_FOGLIO, timeout=20)
+    r.raise_for_status()
+    righe = r.json()
+    voti = {}
+    for riga in righe[1:]:
+        if len(riga) >= 2 and str(riga[0]).strip():
+            voti[str(riga[0]).strip()] = [
+                p.strip() for p in str(riga[1]).split(",") if p.strip()
+            ]
+    return voti
 
-nome = st.text_input("Il tuo nome")
-if nome.strip():
-    nome = nome.strip()
-    precedenti = st.session_state.voti.get(nome, [])
-    scelte = st.multiselect(
-        "Cosa vuoi?",
-        list(PRODOTTI.keys()),
-        default=precedenti
+def salva_voto(nome, prodotti):
+    r = requests.post(
+        URL_FOGLIO,
+        json={"nome": nome, "prodotti": prodotti},
+        timeout=30,
     )
-    if st.button("Salva / aggiorna il mio voto"):
-        st.session_state.voti[nome] = scelte
-        st.success("Voto aggiornato!")
+    r.raise_for_status()
+    if r.text.strip() != "OK":
+        raise RuntimeError("Google Sheets non ha confermato il salvataggio.")
+
+try:
+    voti = leggi_voti()
+except Exception as e:
+    st.error("Non riesco a leggere Google Sheets. Controlla l'URL e la distribuzione Apps Script.")
+    st.stop()
+
+st.subheader("🗳️ Il tuo voto")
+nome = st.text_input("Scrivi il tuo nome").strip()
+
+if nome:
+    scelte = st.multiselect(
+        "Scegli i prodotti",
+        list(PRODOTTI.keys()),
+        default=voti.get(nome, []),
+    )
+    if st.button("Salva il mio voto"):
+        try:
+            salva_voto(nome, scelte)
+            st.success("Voto salvato!")
+            st.rerun()
+        except Exception:
+            st.error("Salvataggio non riuscito. Riprova.")
 
 st.divider()
-st.subheader("🗳️ Voti dei partecipanti")
+st.subheader("👀 Voti visibili a tutti")
 
-if not st.session_state.voti:
+if not voti:
     st.info("Ancora nessun voto.")
 else:
-    for persona, scelte_persona in st.session_state.voti.items():
-        st.write(f"**{persona}**: {', '.join(scelte_persona) or 'Nessun prodotto'}")
+    for persona, scelte_persona in voti.items():
+        st.write(f"**{persona}:** {', '.join(scelte_persona) or 'Nessun prodotto'}")
 
-    comuni = st.number_input(
-        "Spese comuni totali (€)",
-        min_value=0.0,
-        value=0.0,
-        step=1.0
-    )
+    st.subheader("🛒 Spesa dei prodotti")
+    totali = {persona: 0 for persona in voti}
+    totale_prodotti = 0
 
-    st.divider()
-    st.subheader("🛒 Riepilogo acquisti")
-
-    totali = {persona: 0 for persona in st.session_state.voti}
-    partecipanti = list(totali)
-    dettagli = {}
-
-    for prodotto, (prezzo, tipo) in PRODOTTI.items():
+    for prodotto, prezzo in PRODOTTI.items():
         interessati = [
-            p for p, scelte_persona in st.session_state.voti.items()
+            persona for persona, scelte_persona in voti.items()
             if prodotto in scelte_persona
         ]
-        if not interessati:
+        n = len(interessati)
+        if not n:
             continue
 
-        # Regola provvisoria: una bottiglia/confezione ogni 3 votanti.
-        quantita = (len(interessati) + 2) // 3
-        costo = int(
-            (Decimal(str(prezzo)) * quantita * 100).quantize(
-                Decimal("1"), rounding=ROUND_HALF_UP
-            )
+        quantita = (n + 2) // 3
+        costo_cent = round(prezzo * 100) * quantita
+        totale_prodotti += costo_cent
+        st.write(
+            f"**{prodotto}:** {quantita} confezioni — "
+            f"{n} votanti — € {costo_cent / 100:.2f}"
         )
-        dettagli[prodotto] = (len(interessati), quantita, costo)
 
-        base, resto = divmod(costo, len(interessati))
+        base, resto = divmod(costo_cent, n)
         for i, persona in enumerate(interessati):
             totali[persona] += base + (1 if i < resto else 0)
 
-    cent_comuni = int(round(comuni * 100))
-    if partecipanti:
-        base, resto = divmod(cent_comuni, len(partecipanti))
-        for i, persona in enumerate(partecipanti):
-            totali[persona] += base + (1 if i < resto else 0)
+    st.subheader("💶 Spese comuni")
+    comuni = st.number_input(
+        "Inserisci il totale delle spese comuni (€)",
+        min_value=0.0,
+        value=0.0,
+        step=1.0,
+    )
+    comuni_cent = round(comuni * 100)
+    persone = list(voti)
+    base, resto = divmod(comuni_cent, len(persone))
+    for i, persona in enumerate(persone):
+        totali[persona] += base + (1 if i < resto else 0)
 
-    for prodotto, (votanti, quantita, costo) in dettagli.items():
-        st.write(
-            f"- **{prodotto}**: {votanti} interessati, "
-            f"{quantita} confezioni, € {costo / 100:.2f}"
-        )
+    st.subheader("💰 Quanto paga ciascuno")
+    for persona, cent in totali.items():
+        st.write(f"**{persona}:** € {cent / 100:.2f}")
 
-    st.subheader("💶 Quanto paga ciascuno")
-    for persona, centesimi in totali.items():
-        st.write(f"**{persona}**: € {centesimi / 100:.2f}")
+    st.write(f"**Totale prodotti:** € {totale_prodotti / 100:.2f}")
+    st.write(f"**Spese comuni:** € {comuni_cent / 100:.2f}")
 
-    st.write(f"**Totale prodotti:** € {sum(x[2] for x in dettagli.values()) / 100:.2f}")
-    st.write(f"**Spese comuni:** € {cent_comuni / 100:.2f}")
+if st.button("🔄 Aggiorna voti"):
+    st.rerun()
+```
