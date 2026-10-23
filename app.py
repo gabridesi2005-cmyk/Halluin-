@@ -1,5 +1,7 @@
 
 import streamlit as st
+import requests
+URL_FOGLIO = "https://script.google.com/macros/s/AKfycbyobZDTiEKajFlKk0HAYUUnZns0ro01Nwvryq8WzI7zFDaf8hpagwpCEXkpZU_PL7TCYQ/exec"
 from decimal import Decimal, ROUND_HALF_UP
 
 st.set_page_config(page_title="Halluin", page_icon="🎉")
